@@ -3,23 +3,51 @@
 # 将自定义资源复制到 DSH 前端 dist，并幂等修补 index.html。
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File install.ps1 [-Dist <dsh-web-frontend 包路径>] [-StartServices]
+# 说明：-Dist 缺省时自动探测本机 DSH 前端包（npx 缓存 glob + 环境变量 DSH_WEB_FRONTEND）
 # =====================================================================
 param(
-  [string]$Dist = "C:\Users\30964\AppData\Local\npm-cache\_npx\1e7f6d9597241db0\node_modules\@deepseek-ai\dsh-web-frontend",
+  [string]$Dist = "",
   [switch]$StartServices
 )
 $ErrorActionPreference = 'Stop'
 $Plugin = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ---------- 自动探测 DSH 前端包路径 ----------
+function Find-DshWebFrontend {
+  # 1) 环境变量显式指定
+  if ($env:DSH_WEB_FRONTEND -and (Test-Path $env:DSH_WEB_FRONTEND)) { return $env:DSH_WEB_FRONTEND }
+  # 2) npx 缓存 glob（常见安装位置）
+  $npxRoots = @()
+  if ($env:LOCALAPPDATA) { $npxRoots += (Join-Path $env:LOCALAPPDATA 'npm-cache\_npx') }
+  if ($env:USERPROFILE) { $npxRoots += (Join-Path $env:USERPROFILE 'AppData\Local\npm-cache\_npx') }
+  foreach ($root in $npxRoots) {
+    if (-not (Test-Path $root)) { continue }
+    $hits = @(Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+      $p = Join-Path $_.FullName 'node_modules\@deepseek-ai\dsh-web-frontend'
+      if (Test-Path $p) { $p }
+    })
+    if ($hits.Count -gt 0) { return $hits[0] }
+  }
+  return $null
+}
+
+if (-not $Dist) {
+  $Dist = Find-DshWebFrontend
+  if (-not $Dist) {
+    Write-Error "未找到 dsh-web-frontend 包，请用 -Dist 指定路径（例如 node_modules\@deepseek-ai\dsh-web-frontend）"
+  }
+  Write-Host "自动探测到 DSH 前端包: $Dist" -ForegroundColor DarkGray
+}
 $Dist = (Resolve-Path $Dist).Path
 $assetsDest = Join-Path $Dist 'dist\assets'
 
 Write-Host "== nano_dsh_interface 安装 ==" -ForegroundColor Cyan
 Write-Host "目标: $Dist"
 
-# 1) 资源（-Recurse 确保 vendor 子目录完整复制）
-New-Item -ItemType Directory -Force -Path "$assetsDest\vendor" | Out-Null
+# 1) 资源（-Recurse 确保 modules/vendor 子目录完整复制）
+New-Item -ItemType Directory -Force -Path "$assetsDest\modules", "$assetsDest\vendor" | Out-Null
 Copy-Item -Force -Recurse (Join-Path $Plugin 'assets\*') $assetsDest
-Write-Host "[1/3] 资源已复制 (background.jpg / custom-background.css / custom-background.js / vendor/xterm)"
+Write-Host "[1/3] 资源已复制 (background.jpg / css / js / modules / vendor/xterm)"
 
 # 2) 服务与配置
 Copy-Item -Force (Join-Path $Plugin 'services\*') $Dist

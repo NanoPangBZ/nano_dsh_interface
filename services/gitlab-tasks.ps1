@@ -1,10 +1,33 @@
 ﻿# =====================================================================
 # GitLab 任务查询 CLI（一次性）
 # 用法：pwsh -File gitlab-tasks.ps1
-# 配置：gitlab-config.json（url + token），或环境变量 GITLAB_TOKEN 优先
+# 配置：gitlab-config.json（url）+ gitlab-token.enc（DPAPI 加密令牌），
+#       或环境变量 GITLAB_TOKEN 优先（旧版明文 json token 字段兼容读取）
 # 输出：指派给当前用户的开放 Issue 清单
 # =====================================================================
 $ErrorActionPreference = 'Stop'
+
+# 读取令牌：环境变量 > gitlab-token.enc（DPAPI）> 旧版 json 明文
+function Read-Token {
+    if ($env:GITLAB_TOKEN) { return $env:GITLAB_TOKEN }
+    $encPath = Join-Path $PSScriptRoot 'gitlab-token.enc'
+    if (Test-Path $encPath) {
+        Add-Type -AssemblyName System.Security
+        $s = (Get-Content $encPath -Raw).Trim()
+        if ($s) {
+            $b = [Convert]::FromBase64String($s)
+            $d = [System.Security.Cryptography.ProtectedData]::Unprotect($b, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+            $t = [System.Text.Encoding]::UTF8.GetString($d)
+            if ($t) { return $t }
+        }
+    }
+    $configPath = Join-Path $PSScriptRoot 'gitlab-config.json'
+    if (Test-Path $configPath) {
+        $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($cfg.token -and $cfg.token -ne 'PASTE_YOUR_TOKEN_HERE') { return [string]$cfg.token }
+    }
+    return $null
+}
 
 $configPath = Join-Path $PSScriptRoot 'gitlab-config.json'
 if (-not (Test-Path $configPath)) {
@@ -12,9 +35,9 @@ if (-not (Test-Path $configPath)) {
 }
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 $base = ([string]$config.url).TrimEnd('/')
-$token = if ($env:GITLAB_TOKEN) { $env:GITLAB_TOKEN } else { [string]$config.token }
-if ([string]::IsNullOrWhiteSpace($token) -or $token -eq 'PASTE_YOUR_TOKEN_HERE') {
-    Write-Error '未配置令牌：请在 gitlab-config.json 填入 token，或设置环境变量 GITLAB_TOKEN'; exit 1
+$token = Read-Token
+if ([string]::IsNullOrWhiteSpace($token)) {
+    Write-Error '未配置令牌：请在 设置 → 主题设置 → GitLab 配置 中填写，或设置环境变量 GITLAB_TOKEN'; exit 1
 }
 
 $headers = @{ 'PRIVATE-TOKEN' = $token }

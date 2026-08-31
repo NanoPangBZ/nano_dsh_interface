@@ -1,11 +1,15 @@
 /* =====================================================================
-   DSH 自定义主题 — 配置驱动版
+   nano_dsh_interface — 自定义样式
    背景图 + 电影感深色遮罩 + 前景面板不透明度 + 对话区毛玻璃（用户可调，实时响应）
 
    变量（由 custom-background.js 实时写入 documentElement.style）：
      --dsh-bg-image      背景图 url（默认 /assets/background.jpg）
      --dsh-panel-alpha   前景面板不透明度 0.25~1（1 - 透明度%）
      --dsh-glass-filter  对话区毛玻璃："blur(Npx) saturate(1.15)" 或 "none"
+
+   选择器说明：DSH 的 CSS-module 哈希类名（pI_x6G_centerCol 等）每次构建会变，
+   因此用 JS 结构探测后打上的稳定标记类 .dshn-* 定位（见 dshnano-core.js），
+   并在部分规则里保留旧哈希类名作兜底。
 
    注意：backdrop-filter 会让祖先成为 fixed 后代（浮层/弹窗）的包含块，
    导致设置弹窗等位置错乱。因此侧边栏/详情栏只用半透明背景，不启用
@@ -21,7 +25,7 @@ html, body { height: 100%; }
 
 /* ---------- 背景图与遮罩 ---------- */
 body {
-  /* 浅色主题：均匀遮罩（无底部加深阴影），颜色由 --dsh-mask-color 控制 */
+  /* 浅色主题：均匀遮罩，颜色由 --dsh-mask-color 控制 */
   background:
     linear-gradient(180deg,
       color-mix(in srgb, var(--dsh-mask-color, #0c0f14) 52%, transparent) 0%,
@@ -30,7 +34,7 @@ body {
   background-color: #0d0f13 !important;
 }
 
-/* 深色主题：均匀遮罩（无底部加深阴影） */
+/* 深色主题：均匀遮罩 */
 body[data-ds-dark-theme] {
   background:
     linear-gradient(180deg,
@@ -58,36 +62,65 @@ body[data-ds-dark-theme] {
 }
 
 /* ---------- 外层框架透明，露出背景图 ---------- */
-.pI_x6G_frame { background: transparent !important; }
+.dshn-frame, .pI_x6G_frame { background: transparent !important; }
 
 /* ---------- 侧边栏 / 详情栏：半透明面板 ----------
    不用 backdrop-filter（会破坏其内部 fixed 定位的设置弹窗等浮层） */
-.pI_x6G_detailsCol {
+.dshn-detailsCol, .pI_x6G_detailsCol {
   background: color-mix(in srgb, #1b1b1c calc(var(--dsh-panel-alpha) * 100%), transparent) !important;
 }
+body:not([data-ds-dark-theme]) .dshn-detailsCol,
 body:not([data-ds-dark-theme]) .pI_x6G_detailsCol {
   background: color-mix(in srgb, #f9fafb calc(var(--dsh-panel-alpha) * 100%), transparent) !important;
 }
-.pI_x6G_sidebarCol { border-right-color: rgba(127, 127, 127, .20) !important; }
-.pI_x6G_detailsCol { border-left-color: rgba(127, 127, 127, .20) !important; }
+.dshn-sidebarCol, .pI_x6G_sidebarCol { border-right-color: rgba(127, 127, 127, .20) !important; }
+.dshn-detailsCol, .pI_x6G_detailsCol { border-left-color: rgba(127, 127, 127, .20) !important; }
 
 /* ---------- 会话主区：磨砂玻璃 ----------
-   开关与强度由 --dsh-glass-filter 控制（custom-background.js 实时写入）：
-     "blur(24px) saturate(1.15)" = 开启；"none" = 关闭 */
-.wSkVaW_root {
+   开关与强度由 --dsh-glass-filter 控制（custom-background.js 实时写入） */
+.dshn-root, .wSkVaW_root {
   -webkit-backdrop-filter: var(--dsh-glass-filter, blur(24px) saturate(1.15)) !important;
   backdrop-filter: var(--dsh-glass-filter, blur(24px) saturate(1.15)) !important;
 }
 
 /* ---------- 输入卡：磨砂玻璃 ---------- */
-.uV2eYG_card {
+.dshn-card, .uV2eYG_card {
   -webkit-backdrop-filter: var(--dsh-glass-filter, blur(22px) saturate(1.3)) !important;
   backdrop-filter: var(--dsh-glass-filter, blur(22px) saturate(1.3)) !important;
 }
 
 /* ---------- 输入区座位：去掉底部的黑色渐变阴影 ---------- */
-.wSkVaW_composerSeat {
+.dshn-composerSeat, .wSkVaW_composerSeat {
   background: transparent !important;
+}
+
+/* =====================================================================
+   设置面板 · 主题设置导航项（JS 注入，类名自持，不依赖 DSH 哈希）
+   ===================================================================== */
+.dsh-theme-navcell {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #6b7280);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  transition: background-color .15s;
+}
+.dsh-theme-navcell:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127,127,127,.12));
+}
+.dsh-theme-navcell.dshn-nav-active {
+  background: var(--dsw-alias-interactive-bg-active, rgba(127,127,127,.18));
+  color: var(--dsw-alias-label-primary, #111827);
+  font-weight: 600;
 }
 
 /* =====================================================================
@@ -193,9 +226,6 @@ body:not([data-ds-dark-theme]) .pI_x6G_detailsCol {
 }
 #dsh-theme-panel .dsh-bg-switch input:checked + .dsh-bg-track::after {
   transform: translateX(16px);
-}
-#dsh-theme-panel .dsh-bg-row.dsh-bg-disabled {
-  opacity: .45;
 }
 #dsh-theme-panel .dsh-bg-btn {
   flex: none;
@@ -404,7 +434,6 @@ body:not([data-ds-dark-theme]) .pI_x6G_detailsCol {
 /* =====================================================================
    GitLab 任务子窗口（VS Code 风格：标题栏拖动、边缘吸附）
    dock left/right = 纵向列表；dock top/bottom = 横向排列
-   透明度与毛玻璃与对话框一致
    ===================================================================== */
 #dsh-gitlab-panel {
   position: fixed;
@@ -591,6 +620,7 @@ body:not([data-ds-dark-theme]) .pI_x6G_detailsCol {
    PowerShell 终端（对话框下方，透明度与毛玻璃与对话框一致）
    ===================================================================== */
 /* 终端开启时，对话区让出底部空间（高度交给 flex 分配） */
+body.dsh-term-open .dshn-root,
 body.dsh-term-open .wSkVaW_root {
   height: auto !important;
   flex: 1 1 auto !important;
@@ -837,4 +867,189 @@ body.dsh-term-open .wSkVaW_root {
 }
 #dsh-terminal .xterm {
   height: 100%;
+}
+
+/* =====================================================================
+   目录选择器（自研扫描列表，替代系统文件夹弹窗）
+   ===================================================================== */
+.dsh-dirpicker {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 950;
+  box-sizing: border-box;
+  width: 440px;
+  max-width: 92vw;
+  max-height: 70vh;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  /* 实心不透明背景（不随 --dsh-panel-alpha 透明，不用毛玻璃） */
+  background: #ffffff;
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv3);
+  font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+  flex-direction: column;
+  display: flex;
+  gap: 8px;
+}
+body[data-ds-dark-theme] .dsh-dirpicker {
+  background: #232324;
+}
+.dsh-dirpicker-head {
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  display: flex;
+}
+.dsh-dirpicker-title {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.dsh-dirpicker-close {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 15px;
+  line-height: 1;
+}
+.dsh-dirpicker-close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+/* 当前路径条（含 ✎ 编辑与输入框） */
+.dsh-dirpicker-pathbar {
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: #f2f3f5;
+  display: flex;
+}
+body[data-ds-dark-theme] .dsh-dirpicker-pathbar {
+  background: #2c2c2e;
+}
+.dsh-dirpicker-cwd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  font-family: var(--ds-font-family-code, Consolas, "Courier New", monospace);
+  user-select: text;
+}
+.dsh-dirpicker-edit {
+  flex: none;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+.dsh-dirpicker-edit:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.dsh-dirpicker-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code, Consolas, "Courier New", monospace);
+  font-size: 12px;
+  line-height: 18px;
+}
+/* 操作按钮行 */
+.dsh-dirpicker-actions {
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  display: flex;
+}
+.dsh-dirpicker-btn {
+  cursor: pointer;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+.dsh-dirpicker-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+.dsh-dirpicker-btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.dsh-dirpicker-btn.dsh-dirpicker-primary {
+  margin-left: auto;
+  border-color: var(--dsw-alias-state-business-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+}
+/* 目录列表 */
+.dsh-dirpicker-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  padding: 4px;
+  flex-direction: column;
+  display: flex;
+}
+.dsh-dirpicker-item {
+  flex: none;
+  cursor: pointer;
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+.dsh-dirpicker-item:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+.dsh-dirpicker-empty {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  display: flex;
+  padding: 8px;
+}
+.dsh-dirpicker-status {
+  flex: none;
+  min-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-all;
 }

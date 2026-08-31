@@ -1,15 +1,38 @@
 ﻿# =====================================================================
-# GitLab 任务后台抓取器（供 Web 悬浮窗轮询）
+# GitLab 任务后台抓取器（备用，主用 gitlab-bridge.mjs）
 # 每 30 秒抓取一次"指派给我的开放 Issue"，原子写入 dist/assets/gitlab-tasks.json
-# 配置：gitlab-config.json（url + token），或环境变量 GITLAB_TOKEN 优先
+# 配置：gitlab-config.json（url）+ gitlab-token.enc（DPAPI 加密令牌），
+#       或环境变量 GITLAB_TOKEN 优先（旧版明文 json token 字段兼容读取）
 # =====================================================================
 $ErrorActionPreference = 'SilentlyContinue'
 $out = Join-Path $PSScriptRoot 'dist\assets\gitlab-tasks.json'
 
+# 读取令牌：环境变量 > gitlab-token.enc（DPAPI）> 旧版 json 明文
+function Read-Token {
+    if ($env:GITLAB_TOKEN) { return $env:GITLAB_TOKEN }
+    $encPath = Join-Path $PSScriptRoot 'gitlab-token.enc'
+    if (Test-Path $encPath) {
+        Add-Type -AssemblyName System.Security
+        $s = (Get-Content $encPath -Raw).Trim()
+        if ($s) {
+            $b = [Convert]::FromBase64String($s)
+            $d = [System.Security.Cryptography.ProtectedData]::Unprotect($b, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+            $t = [System.Text.Encoding]::UTF8.GetString($d)
+            if ($t) { return $t }
+        }
+    }
+    $configPath = Join-Path $PSScriptRoot 'gitlab-config.json'
+    if (Test-Path $configPath) {
+        $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($cfg.token -and $cfg.token -ne 'PASTE_YOUR_TOKEN_HERE') { return [string]$cfg.token }
+    }
+    return $null
+}
+
 $configPath = Join-Path $PSScriptRoot 'gitlab-config.json'
 $config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { $null }
 $base = if ($config) { ([string]$config.url).TrimEnd('/') } else { 'http://192.168.1.12' }
-$token = if ($env:GITLAB_TOKEN) { $env:GITLAB_TOKEN } elseif ($config) { [string]$config.token } else { '' }
+$token = Read-Token
 
 function Write-Json([object]$obj) {
     $json = $obj | ConvertTo-Json -Compress -Depth 5
@@ -17,10 +40,10 @@ function Write-Json([object]$obj) {
     Move-Item -Force "$out.tmp" $out
 }
 
-if ([string]::IsNullOrWhiteSpace($token) -or $token -eq 'PASTE_YOUR_TOKEN_HERE') {
-    $obj = [pscustomobject]@{ ts = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); error = '未配置令牌：请在 gitlab-config.json 填入 token'; user = $null; count = 0; issues = @() }
+if ([string]::IsNullOrWhiteSpace($token)) {
+    $obj = [pscustomobject]@{ ts = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); error = '未配置令牌：请在 设置 → 主题设置 → GitLab 配置 中填写'; user = $null; count = 0; issues = @() }
     Write-Json $obj
-    Write-Output 'gitlab-fetch: 未配置令牌，退出。请在 gitlab-config.json 填入 token 后重启。'
+    Write-Output 'gitlab-fetch: 未配置令牌，退出。请在 设置 → 主题设置 → GitLab 配置 中填写后重启。'
     exit 1
 }
 

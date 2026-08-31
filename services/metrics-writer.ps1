@@ -1,11 +1,14 @@
 ﻿# =====================================================================
 # DSH 系统监控采样器
-# 每 2 秒采集 CPU / GPU / 内存 / 磁盘读写带宽 / 网络上下行，
+# 每 IntervalSec 秒采集 CPU / GPU / 内存 / 磁盘读写带宽 / 网络上下行，
 # 原子写入 dist/assets/metrics.json，供 Web 悬浮窗轮询。
 # 依赖：Windows 性能计数器（Win10+ 含 GPU Engine 计数器）。
+# 用法：pwsh -NoProfile -File metrics-writer.ps1 [-IntervalSec 2]
 # =====================================================================
+param([int]$IntervalSec = 2)
 $ErrorActionPreference = 'SilentlyContinue'
 $out = Join-Path $PSScriptRoot 'dist\assets\metrics.json'
+if ($IntervalSec -lt 1) { $IntervalSec = 1 }
 
 $counters = @(
     '\Processor(_Total)\% Processor Time',
@@ -54,6 +57,7 @@ while ($true) {
         if ($ramUsedGB -lt 0) { $ramUsedGB = 0 }
 
         $obj = [pscustomobject]@{
+            ts   = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             cpu  = [math]::Round($cpu, 1)
             gpu  = if ($gpu -ge 0) { [math]::Round($gpu, 1) } else { -1 }
             ram  = [pscustomobject]@{ used = [math]::Round($ramUsedGB, 1); total = [math]::Round($totalGB, 1) }
@@ -69,5 +73,5 @@ while ($true) {
         [System.IO.File]::WriteAllText("$out.tmp", $json)
         Move-Item -Force "$out.tmp" $out
     }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds $IntervalSec
 }

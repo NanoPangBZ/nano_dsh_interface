@@ -1,5 +1,7 @@
-# 私密配置：包含 GitLab 访问令牌，不入库（用 gitlab-config.json.example 作模板）
+# 私密配置：GitLab 地址配置（不含令牌，但为保险不入库，用 example 作模板）
 gitlab-config.json
+# DPAPI 加密令牌（当前用户加密，换机器无效）
+gitlab-token.enc
 
 # 系统杂项
 .DS_Store
