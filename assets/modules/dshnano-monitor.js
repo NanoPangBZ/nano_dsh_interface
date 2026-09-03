@@ -120,12 +120,44 @@ function tick() {
     .catch(() => {});
 }
 
+/** 把悬浮窗钳制回视口内（窗口缩小 / 位置恢复时防止"跑到窗口外"） */
+function clampWidget() {
+  const w = monitorWidget;
+  if (!w || w.style.display === "none") return;
+  /* 未拖动过：默认 right/bottom 锚定，随窗口自动跟随，无需处理 */
+  if (w.style.left === "" && w.style.right !== "auto") return;
+  const rect = w.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const M = 8;
+  const maxLeft = Math.max(0, vw - Math.min(rect.width || 220, vw) - M);
+  const maxTop = Math.max(0, vh - Math.min(rect.height || 200, vh) - M);
+  const l = Math.min(Math.max(rect.left, M), maxLeft);
+  const t = Math.min(Math.max(rect.top, M), maxTop);
+  if (Math.abs(l - rect.left) > 0.5 || Math.abs(t - rect.top) > 0.5) {
+    w.style.left = l + "px";
+    w.style.top = t + "px";
+    try {
+      localStorage.setItem("dsh.monitorPos", JSON.stringify({ x: Math.round(l), y: Math.round(t) }));
+    } catch (e) { /* ignore */ }
+  }
+}
+
+let resizeGuard = null;
+function startResizeGuard() {
+  if (resizeGuard) return;
+  resizeGuard = () => clampWidget();
+  window.addEventListener("resize", resizeGuard);
+}
+
 /** 供 core.apply 分发调用的模块入口 */
 export function ensure(on) {
   if (on) {
     if (!monitorWidget) {
       monitorWidget = buildWidget();
       document.body.appendChild(monitorWidget);
+      clampWidget(); // 记忆的位置可能在缩小后的窗口外，拉回可视区
+      startResizeGuard();
     }
     monitorWidget.style.display = "";
     if (!monitorTimer) {

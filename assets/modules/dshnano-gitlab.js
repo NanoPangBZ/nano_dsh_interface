@@ -243,6 +243,35 @@ export function refreshNow() {
     .catch(() => {});
 }
 
+/** 窗口缩放时把悬浮态的 GitLab 面板钳回视口内（dock 态随边缘锚定，无需处理） */
+function clampFloatLayout() {
+  const w = gitlabSidebar;
+  if (!w || w.style.display === "none") return;
+  if (!w.classList.contains("dsh-gl-float")) return;
+  const rect = w.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const M = 8;
+  const maxLeft = Math.max(0, vw - Math.min(rect.width || 320, vw) - M);
+  const maxTop = Math.max(0, vh - Math.min(rect.height || 240, vh) - M);
+  const x = Math.min(Math.max(rect.left, M), maxLeft);
+  const y = Math.min(Math.max(rect.top, M), maxTop);
+  if (Math.abs(x - rect.left) > 0.5 || Math.abs(y - rect.top) > 0.5) {
+    w.style.left = x + "px";
+    w.style.top = y + "px";
+    try {
+      localStorage.setItem("dsh.gitlabLayout", JSON.stringify({ mode: "float", x: Math.round(x), y: Math.round(y) }));
+    } catch (e) { /* ignore */ }
+  }
+}
+
+let glResizeGuard = null;
+function startGlResizeGuard() {
+  if (glResizeGuard) return;
+  glResizeGuard = () => clampFloatLayout();
+  window.addEventListener("resize", glResizeGuard);
+}
+
 /** 供 core.apply 分发调用的模块入口 */
 export function ensure(on) {
   if (on) {
@@ -250,6 +279,8 @@ export function ensure(on) {
       gitlabSidebar = buildSidebar();
       document.body.appendChild(gitlabSidebar);
       applyLayout(getLayout());
+      clampFloatLayout();
+      startGlResizeGuard();
     }
     gitlabSidebar.style.display = "";
     if (!gitlabTimer) {
