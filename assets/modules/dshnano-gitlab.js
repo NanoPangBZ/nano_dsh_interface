@@ -1,7 +1,7 @@
 /* =====================================================================
    dshnano-gitlab — GitLab 任务子窗口模块
    VS Code 风格：标题栏拖动 + 四边吸附（上/下边横向排列）、列表项拖拽排序
-   数据来自 dist/assets/gitlab-tasks.json（gitlab-bridge.mjs 每 30s 抓取）
+   数据来自 gitlab-bridge 的 /tasks（每 30s 抓取后写入插件仓库 data/gitlab-tasks.json）
    改进：数据 ts 未变化时跳过重渲染；页面隐藏时暂停轮询。
    ===================================================================== */
 "use strict";
@@ -11,6 +11,10 @@ import {
 } from "./dshnano-core.js";
 
 const POLL_MS = 30000; // 与 gitlab-bridge.mjs 抓取周期一致
+
+/* 任务数据由 gitlab-bridge 从插件仓库的 data/gitlab-tasks.json 提供。
+   走本地桥服务而不是 DSH 的 /assets 静态路由：DSH 升级覆盖 dist 时不再失效。 */
+const GITLAB_BRIDGE = "http://127.0.0.1:3081";
 
 let gitlabTimer = null;
 let gitlabSidebar = null;
@@ -218,7 +222,7 @@ function signature(data) {
 
 function tick() {
   if (!isVisible()) return; // 页面隐藏时暂停轮询
-  fetch("/assets/gitlab-tasks.json?t=" + Date.now(), { cache: "no-store" })
+  fetch(GITLAB_BRIDGE + "/tasks?t=" + Date.now(), { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (!d) return;
@@ -233,7 +237,7 @@ function tick() {
 
 /** 立即拉取一次并渲染（保存配置后调用） */
 export function refreshNow() {
-  fetch("/assets/gitlab-tasks.json?t=" + Date.now(), { cache: "no-store" })
+  fetch(GITLAB_BRIDGE + "/tasks?t=" + Date.now(), { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (!d) return;

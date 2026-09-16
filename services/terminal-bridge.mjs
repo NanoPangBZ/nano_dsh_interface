@@ -288,7 +288,7 @@ wss.on("connection", (ws) => {
   if (!pty) {
     ws.send(JSON.stringify({
       type: "err",
-      data: "terminal-bridge 缺少 node-pty 依赖（" + (ptyError || "未知错误") + "），请在 dsh-web-frontend 包目录执行: npm i node-pty"
+      data: "terminal-bridge 缺少 node-pty 依赖（" + (ptyError || "未知错误") + "），请在插件仓库执行: npm install"
     }));
     return;
   }

@@ -3,9 +3,13 @@
    职责：
      1. 配置读写（localStorage，键 dsh.bgConfig，兼容旧版）
      2. apply 分发：把配置一次性应用到 theme/monitor/gitlab/terminal 四个模块
-     3. DSH 内部结构探测：CSS-module 哈希类名（pI_x6G_centerCol 等）每次构建会变，
-        这里按"语义后缀"匹配（_centerCol/_panel/_root…），并保留旧哈希兜底，
-        结构变更时优雅降级并告警。
+     3. DSH 内部结构探测：布局/设置面板由 DSH 的客户端插件包渲染，其 CSS-module
+        类名形如 <hash>_<语义名>（pI_x6G_centerCol、VOzbGW_panel…）。
+        探测顺序为"精确选择器优先，语义后缀兜底"：
+          · 精确选择器命中当前已知构建，避免通用后缀误命中别的组件
+            （例如 _panel/_content/_root 在 DSH 里各有若干个同后缀类名）；
+          · 精确选择器全部失配时（DSH 换了哈希）再按后缀扫描，仍能自适应；
+          · 两者都失败则优雅降级：该元素留空，相关样式不生效，其余功能不受影响。
      4. 通用工具：HTML 转义、URL 白名单、防抖、页面可见性辅助
    ===================================================================== */
 "use strict";
@@ -84,7 +88,8 @@ export function safeUrl(value) {
 const LEGACY_SELECTORS = {
   centerCol: ".pI_x6G_centerCol",
   frame: ".pI_x6G_frame",
-  detailsCol: ".pI_x6G_detailsCol",
+  /* DSH 0.1.5 起右侧栏由 detailsCol 更名为 rightbarCol；两个都试，兼容新旧构建。 */
+  detailsCol: ".pI_x6G_rightbarCol, .pI_x6G_detailsCol",
   sidebarCol: ".pI_x6G_sidebarCol",
   root: ".wSkVaW_root",
   card: ".uV2eYG_card",
@@ -141,7 +146,7 @@ export const structure = {
 export function refreshStructure(suffixes = SUFFIXES) {
   let changed = false;
   for (const s of suffixes) {
-    const el = findBySuffix(s) || document.querySelector(LEGACY_SELECTORS[s] || "");
+    const el = document.querySelector(LEGACY_SELECTORS[s] || "") || findBySuffix(s);
     if (structure[s] !== el) { structure[s] = el; changed = true; }
     if (el && el.classList) el.classList.add("dshn-" + s); // 幂等打标
   }

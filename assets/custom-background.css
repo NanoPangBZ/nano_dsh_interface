@@ -2,8 +2,9 @@
    nano_dsh_interface — 自定义样式
    背景图 + 电影感深色遮罩 + 前景面板不透明度 + 对话区毛玻璃（用户可调，实时响应）
 
-   变量（由 custom-background.js 实时写入 documentElement.style）：
-     --dsh-bg-image      背景图 url（默认 /assets/background.jpg）
+   变量（由 client/index.js 装配的 theme 模块实时写入 documentElement.style）：
+     --dsh-bg-image      背景图 url（默认取自 gitlab-bridge 的 /default-background，
+                          即插件仓库 assets/background.jpg；不走 DSH 静态路由，升级不失联）
      --dsh-panel-alpha   前景面板不透明度 0.25~1（1 - 透明度%）
      --dsh-glass-filter  对话区毛玻璃："blur(Npx) saturate(1.15)" 或 "none"
 
@@ -19,7 +20,7 @@
 html, body { height: 100%; }
 
 :root {
-  --dsh-bg-image: url("/assets/background.jpg");
+  --dsh-bg-image: url("http://127.0.0.1:3081/default-background");
   --dsh-panel-alpha: .75;
 }
 

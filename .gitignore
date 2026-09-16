@@ -3,6 +3,15 @@ gitlab-config.json
 # DPAPI 加密令牌（当前用户加密，换机器无效）
 gitlab-token.enc
 
+# 构建工具依赖（lib/client.js 是产物，需要入库；node_modules 不需要）
+node_modules/
+
+# source map 是开发期产物，宿主缺失时也能正常运行
+lib/client.js.map
+
+# 运行时数据（metrics-writer / gitlab-bridge 写入）
+data/
+
 # 系统杂项
 .DS_Store
 Thumbs.db

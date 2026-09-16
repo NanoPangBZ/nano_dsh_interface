@@ -1,7 +1,7 @@
 /* =====================================================================
    dshnano-monitor — 系统监控悬浮窗模块
-   CPU / GPU / 内存 / 磁盘读写 / 网络上下行（数据来自 dist/assets/metrics.json，
-   由 metrics-writer.ps1 每 2 秒原子写入）
+   CPU / GPU / 内存 / 磁盘读写 / 网络上下行（数据来自 gitlab-bridge 的 /metrics，
+   由 metrics-writer.ps1 每 2 秒把 data/metrics.json 原子写入插件仓库）
    改进：页面隐藏时暂停轮询（visibilitychange 恢复时立即刷新）、
         轮询周期与采样周期对齐（2s）。
    ===================================================================== */
@@ -10,6 +10,10 @@
 import { isVisible, updateConfig } from "./dshnano-core.js";
 
 const POLL_MS = 2000; // 与 metrics-writer.ps1 采样周期一致
+
+/* 指标由 gitlab-bridge 从插件仓库的 data/metrics.json 提供。
+   走本地桥服务而不是 DSH 的 /assets 静态路由：DSH 升级覆盖 dist 时监控不再失效。 */
+const GITLAB_BRIDGE = "http://127.0.0.1:3081";
 
 let monitorTimer = null;
 let monitorWidget = null;
@@ -112,7 +116,7 @@ function render(data) {
 
 function tick() {
   if (!isVisible()) return; // 页面隐藏时跳过
-  fetch("/assets/metrics.json?t=" + Date.now(), { cache: "no-store" })
+  fetch(GITLAB_BRIDGE + "/metrics?t=" + Date.now(), { cache: "no-store" })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (d) render(d);

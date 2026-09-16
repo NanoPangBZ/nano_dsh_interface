@@ -1,11 +1,14 @@
 ﻿# =====================================================================
 # GitLab 任务后台抓取器（备用，主用 gitlab-bridge.mjs）
-# 每 30 秒抓取一次"指派给我的开放 Issue"，原子写入 dist/assets/gitlab-tasks.json
+# 每 30 秒抓取一次"指派给我的开放 Issue"，原子写入 <仓库>\data\gitlab-tasks.json
 # 配置：gitlab-config.json（url）+ gitlab-token.enc（DPAPI 加密令牌），
 #       或环境变量 GITLAB_TOKEN 优先（旧版明文 json token 字段兼容读取）
 # =====================================================================
 $ErrorActionPreference = 'SilentlyContinue'
-$out = Join-Path $PSScriptRoot 'dist\assets\gitlab-tasks.json'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$dataDir = Join-Path $repoRoot 'data'
+if (-not (Test-Path -LiteralPath $dataDir)) { New-Item -ItemType Directory -Force -Path $dataDir | Out-Null }
+$out = Join-Path $dataDir 'gitlab-tasks.json'
 
 # 读取令牌：环境变量 > gitlab-token.enc（DPAPI）> 旧版 json 明文
 function Read-Token {

@@ -1,0 +1,42 @@
+{
+  "name": "nano-dsh-interface",
+  "version": "2.0.0",
+  "private": true,
+  "description": "DeepSeek Harness 界面增强插件（客户端插件）：主题设置 / 系统监控 / GitLab 任务 / PowerShell 终端",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "node test/integration.mjs",
+    "test:terminal": "node test/terminal-smoke.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9",
+    "jsdom": "^30.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.3"
+  }
+}

@@ -3,17 +3,22 @@
 // 职责：
 //   1. 读取/写入 GitLab 配置（URL 明文存 json；令牌 DPAPI 加密存 gitlab-token.enc，
 //      不再明文落盘；旧版 json 中的明文令牌首次启动自动迁移）
-//   2. 每 30 秒抓取"指派给我的开放 Issue"，写 dist/assets/gitlab-tasks.json
+//   2. 每 30 秒抓取"指派给我的开放 Issue"，原子写入 <仓库>\data\gitlab-tasks.json
 //   3. 本地 HTTP 接口（127.0.0.1:3081）：
-//        GET  /config       -> { url, tokenConfigured, user? }
-//        POST /config       -> { url, token } 保存并立即刷新
-//        POST /test         -> 测试连接（不保存）
-//        GET  /health       -> 服务健康状态
-//        POST /background   -> { image: dataURL } 把当前背景保存为默认 background.jpg
-//                              （同时同步到 NANO_BG_SYNC_PATH 指定的插件仓库目录）
+//        GET  /config            -> { url, tokenConfigured, user? }
+//        POST /config            -> { url, token } 保存并立即刷新
+//        POST /test              -> 测试连接（不保存）
+//        GET  /health            -> 服务健康状态
+//        GET  /metrics           -> <仓库>\data\metrics.json 的文件内容（缺失时返回 {}）
+//        GET  /tasks             -> <仓库>\data\gitlab-tasks.json 的文件内容（缺失时返回 {}）
+//        GET  /default-background-> <仓库>\assets\background.jpg 的图片字节（缺失时 404）
+//        POST /background        -> { image: dataURL } 把当前背景保存为默认 background.jpg
+//                                  （同时同步到 NANO_BG_SYNC_PATH 指定的插件仓库目录）
+//   说明：服务、数据与默认背景全部住在插件仓库里（services\ / data\ / assets\），
+//         不再写入 DSH 前端包目录，避免 DSH 升级覆盖 dist 时把数据一起清掉。
 //   安全：CORS 白名单（仅 127.0.0.1:3080 / localhost:3080）+ Host 校验（防 DNS rebinding）
 // =====================================================================
-import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import os from "node:os";
@@ -21,11 +26,16 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// 插件仓库根目录：本脚本位于 <仓库>\services\，因此由脚本自身位置推导（仓库可整体移动）
+const REPO = path.resolve(__dirname, "..");
+const DATA_DIR = path.join(REPO, "data");     // 任务 / 监控数据目录
+const ASSETS_DIR = path.join(REPO, "assets"); // 默认背景图目录
 const CONFIG_PATH = path.join(__dirname, "gitlab-config.json");
 const TOKEN_ENC_PATH = path.join(__dirname, "gitlab-token.enc");
-const OUT_PATH = path.join(__dirname, "dist", "assets", "gitlab-tasks.json");
-const BG_PATH = path.join(__dirname, "dist", "assets", "background.jpg");
-const BG_SYNC_PATH = process.env.NANO_BG_SYNC_PATH || ""; // 插件仓库 assets 目录（可选）
+const OUT_PATH = path.join(DATA_DIR, "gitlab-tasks.json");
+const METRICS_PATH = path.join(DATA_DIR, "metrics.json");
+const BG_PATH = path.join(ASSETS_DIR, "background.jpg");
+const BG_SYNC_PATH = process.env.NANO_BG_SYNC_PATH || ""; // 兼容旧调用：额外的背景同步目录（可选）
 const PORT = 3081;
 const INTERVAL_MS = 30000;
 const TIMEOUT_MS = 15000;
@@ -131,11 +141,32 @@ function saveConfig({ url, token } = {}) {
   writeFileSync(CONFIG_PATH, JSON.stringify({ url: config.url, tokenConfigured: !!config.token }, null, 2) + "\n");
 }
 
+/** 确保目录存在（原子写入前调用，目录缺失时自动创建） */
+function ensureDir(dir) {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (e) { /* 已存在或创建失败：交由后续写入报错 */ }
+}
+
 function writeOut(obj) {
   const json = JSON.stringify(obj);
+  ensureDir(DATA_DIR);
   const tmp = OUT_PATH + ".tmp";
   writeFileSync(tmp, json);
   renameSync(tmp, OUT_PATH);
+}
+
+/* ---------------- 数据文件读取（供 HTTP 直接吐给前端） ---------------- */
+/** 读取 JSON 文件原文；文件缺失、为空或内容损坏时回退为 {}（避免前端刷 404 错误） */
+function readJsonFile(filePath) {
+  try {
+    const text = readFileSync(filePath, "utf8");
+    if (!text.trim()) return "{}";
+    JSON.parse(text); // 校验：写盘是原子的，这里只兜底外部损坏
+    return text;
+  } catch (e) {
+    return "{}";
+  }
 }
 
 /* ---------------- GitLab 抓取 ---------------- */
@@ -197,11 +228,12 @@ function saveDefaultBackground(dataUrl) {
   const buf = Buffer.from(m[2], "base64");
   if (buf.length === 0) throw new Error("图片数据为空");
   if (buf.length > MAX_BG_DECODED) throw new Error("图片过大（解码后 >6MB）");
-  // 原子写入 dist/assets/background.jpg
+  // 原子写入 <仓库>\assets\background.jpg
+  ensureDir(ASSETS_DIR);
   const tmp = BG_PATH + ".tmp";
   writeFileSync(tmp, buf);
   renameSync(tmp, BG_PATH);
-  // 同步回插件仓库 assets（若配置了 NANO_BG_SYNC_PATH）
+  // 兼容旧调用：额外同步到 NANO_BG_SYNC_PATH（现在通常与上面是同一个目录，幂等）
   if (BG_SYNC_PATH) {
     try {
       const syncPath = path.join(BG_SYNC_PATH, "background.jpg");
@@ -244,8 +276,34 @@ const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
+  // 新增数据路由：容忍前端拼 ?t=<时间戳> 的缓存戳，只取路径部分
+  const pathname = String(req.url || "").split("?")[0];
+
+  // GET /metrics：直接回吐 <仓库>\data\metrics.json（metrics-writer.ps1 每 2 秒原子写入）
+  if (req.method === "GET" && pathname === "/metrics") {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(readJsonFile(METRICS_PATH));
+    return;
+  }
+  // GET /tasks：直接回吐 <仓库>\data\gitlab-tasks.json（本服务每 30 秒原子写入）
+  if (req.method === "GET" && pathname === "/tasks") {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(readJsonFile(OUT_PATH));
+    return;
+  }
+  // GET /default-background：回吐 <仓库>\assets\background.jpg 的原始字节（缺失时 404）
+  if (req.method === "GET" && pathname === "/default-background") {
+    let buf = null;
+    try { buf = readFileSync(BG_PATH); } catch (e) { buf = null; }
+    if (!buf || buf.length === 0) { send(404, { error: "default background not found" }); return; }
+    res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "no-store" });
+    res.end(buf);
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/health") {
-    send(200, { ok: true, name: "gitlab-bridge", uptime: Math.floor((Date.now() - startedAt) / 1000), tokenConfigured: !!config.token });
+    // 结构保持兼容（ok/name/uptime/tokenConfigured），额外补一个数据目录字段
+    send(200, { ok: true, name: "gitlab-bridge", uptime: Math.floor((Date.now() - startedAt) / 1000), tokenConfigured: !!config.token, dataDir: DATA_DIR });
     return;
   }
   if (req.method === "GET" && req.url === "/config") {
@@ -298,7 +356,7 @@ const server = http.createServer((req, res) => {
 
 let lastUser = null;
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[gitlab-bridge] listening on http://127.0.0.1:${PORT}${BG_SYNC_PATH ? " (背景同步: " + BG_SYNC_PATH + ")" : ""}`);
+  console.log(`[gitlab-bridge] listening on http://127.0.0.1:${PORT} (数据目录: ${DATA_DIR})${BG_SYNC_PATH ? " (背景同步: " + BG_SYNC_PATH + ")" : ""}`);
   refresh().then((r) => {
     lastUser = r.user;
     if (r.error) console.log(`[gitlab-bridge] 初次抓取提示: ${r.error}`);

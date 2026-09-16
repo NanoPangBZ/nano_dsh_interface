@@ -1,0 +1,4 @@
+{
+  "//": "xterm.js / xterm-addon-fit.js 是 UMD（CommonJS 分支）构建产物。本文件把该目录显式声明为 commonjs，使打包器（esbuild）按 CJS 解析它们；否则会被外层 package.json 的 type:module 当成 ESM，导入得到 undefined。",
+  "type": "commonjs"
+}
