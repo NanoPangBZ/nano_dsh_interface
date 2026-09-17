@@ -32,6 +32,7 @@ nano_dsh_interface\
 ├── install.ps1           # 构建 + 在 profile 的 cordis.patch.yml 里登记一行
 ├── uninstall.ps1         # 移除该行（-CleanLegacy 顺带清理旧版 dist 残留）
 ├── start-services.ps1    # 启动三个后台服务（从本仓库 services\ 启动）
+├── autostart.ps1         # 登录自启计划任务的 安装/查看/取消
 ├── assets\               # 前端资源
 │   ├── background.jpg         # 默认背景图
 │   ├── custom-background.css  # 样式（哈希无关的 .dshn-* 标记类选择器）
@@ -65,12 +66,13 @@ nano_dsh_interface\
 
 ## 安装
 
+**一条命令装完即可用**，不需要再手动启动任何东西：
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1
-powershell -ExecutionPolicy Bypass -File start-services.ps1
 ```
 
-`install.ps1` 做两件事：
+`install.ps1` 做三件事：
 
 1. `npm install`（首次）+ `npm run build` → 生成 `lib/client.js`
 2. 在 `<DSH_HOME>\profiles\web\cordis.patch.yml` 里写入/更新一个**哨兵块**：
@@ -83,11 +85,21 @@ powershell -ExecutionPolicy Bypass -File start-services.ps1
 # <<< nano-dsh-interface <<<
 ```
 
-写盘前会用 profile 自带的 `yaml` 解析器校验**必须是顶层 YAML 数组**（补丁文件写坏会让 dsh 启动直接失败），校验不过就放弃写入、不动原文件。
+3. **立刻启动三个后台服务**，并安装**登录自启任务** —— 所以第一次装完就能用，
+   以后重启电脑也不用手动跑脚本（这是"终端一直连接中／监控没数据"最常见的成因）
 
-装完**刷新页面（Ctrl+F5）**；若插件没出现，重启一次 `dsh web` 让新的 loader 条目生效（`cordis.patch.yml` 是 `patchReload: live`，但新增 loader 行不保证热生效）。
+写盘前会用 profile 自带的 `yaml` 解析器校验**必须是顶层 YAML 数组**（补丁文件写坏会让 dsh 启动直接失败），校验不过就放弃写入、不动原文件；若该 profile 下找不到校验器，会退化为结构自检并给出告警，不会因此中断安装。
 
-可选参数：`-StartServices`（装完顺手起服务）、`-SkipBuild`（只登记不构建）、`-Profile <目录>`（指定 profile，默认 `$DSH_HOME\profiles\web`）。
+装完**刷新页面（Ctrl+F5）**即可。若插件没出现，重启一次 `dsh web`。
+
+可选参数：
+
+| 参数 | 作用 |
+|---|---|
+| `-SkipBuild` | 跳过构建，直接用已入库的 `lib/client.js` |
+| `-NoStartServices` | 不立即启动后台服务 |
+| `-NoAutostart` | 不安装登录自启（之后重启电脑需手动跑 `start-services.ps1`） |
+| `-Profile <目录>` | 指定 profile，默认 `$DSH_HOME\profiles\web` |
 
 ## 卸载
 
@@ -105,6 +117,21 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File start-services.ps1
 ```
+
+### 登录自启（`install.ps1` 已默认装好）
+
+`install.ps1` 会自动注册一个名为 `nano_dsh_interface-services` 的**用户登录时触发**的计划任务来跑
+`start-services.ps1`（带 `-StartWhenAvailable`，错过触发时间也会补跑）。需要单独管理时：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File autostart.ps1 -Enable    # 安装/更新
+powershell -ExecutionPolicy Bypass -File autostart.ps1 -Status    # 查看
+powershell -ExecutionPolicy Bypass -File autostart.ps1 -Disable   # 取消
+```
+
+> ⚠️ **没装自启 + 忘了跑 `start-services.ps1`，是最常见的故障**：表现为
+> **终端一直"连接中…"、监控悬浮窗与 GitLab 任务窗口没有数据**。
+> 这时插件本体是好的，只是三个后台服务不在。
 
 | 服务 | 端口 | 作用 |
 |---|---|---|
@@ -156,6 +183,7 @@ window.__ModuleLoader__.load({
 ```powershell
 npm test               # DOM 集成测试
 npm run test:terminal  # 终端端到端冒烟测试（需先运行 start-services.ps1）
+npm run diagnose       # 终端故障定位（不依赖后台服务）
 ```
 
 `npm test` 在 jsdom 里执行**构建产物本身**（不是源码），模拟宿主的 `window.__ModuleLoader__` 与 cordis `ctx`，
@@ -219,6 +247,28 @@ DSH 0.1.5-rc.1 的真实类名（含 `detailsCol → rightbarCol`）、`settings
 | 插件完全没出现 | 刷新页面；`cordis.patch.yml` 里是否有哨兵块；`lib/client.js` 是否存在；重启 `dsh web` |
 | 页面启动失败/白屏 | `cordis.patch.yml` 是否仍是顶层 YAML 数组（不能只剩注释）；浏览器控制台是否有 `did not activate` / `require(...) missed the module table` |
 | 没有「主题设置」分区 | `settings.section` 插槽未注册成功，看控制台报错；确认 `inject: ["slots"]` 的服务已就绪 |
-| 监控/任务无数据 | `start-services.ps1` 是否跑过；`curl http://127.0.0.1:3081/metrics`、`/tasks` |
-| 终端连不上 | `terminal-bridge` 健康检查（`/health` 看 `pty`、`pwsh`）；`node_modules\ws`、`node-pty` 联接是否有效 |
+| 监控/任务无数据 | **先看后台服务在不在**：`start-services.ps1` 是否跑过 / 自启是否装了；`curl http://127.0.0.1:3081/metrics`、`/tasks` |
+| 终端连不上（一直"连接中…"） | 几乎都是后台服务没跑：`curl http://127.0.0.1:3082/health`（应返回 `pty:"ok"`）。服务在跑还连不上，再看 `ws`/`node-pty` 是否在仓库 `node_modules` 里 |
+| 终端面板根本不出现 | 与后台服务无关，是结构探测没命中 `centerCol`：在浏览器控制台跑下面的检查 |
 | 主题只有背景生效、毛玻璃无效 | 结构探测没命中（DSH 改了类名），按上文表格补精确选择器 |
+
+### 浏览器控制台一行定位（贴在 DSH 页面控制台）
+
+```js
+[ // [插件已加载, xterm 已就绪, centerCol 探测命中, 终端面板已注入, 终端连接状态]
+  document.querySelectorAll('style[data-plugin="nano-dsh-interface"]').length,
+  typeof window.Terminal,
+  !!document.querySelector('.pI_x6G_centerCol'),
+  !!document.querySelector('#dsh-terminal'),
+  (document.querySelector('#dsh-terminal [data-role="termStatus"]')||{}).textContent
+]
+```
+
+对照结论：
+
+| 结果 | 含义与处理 |
+|---|---|
+| 第 1 项为 `0` | 插件没加载 → 刷新；仍未加载则检查 `cordis.patch.yml` 与 `lib/client.js` |
+| 第 1 项 >0、第 2 项不是 `"function"` | xterm 未打进产物 → 重新 `npm run build` 并刷新 |
+| 第 3 项 `false` | 结构探测没命中 `centerCol`（DSH 改了类名）→ 按上文表格更新 `LEGACY_SELECTORS.centerCol` |
+| 第 3、4 项 `true`、状态停在"连接中…" | 终端面板正常，是后台服务没跑 → `start-services.ps1`（或 `autostart.ps1 -Enable`） |
